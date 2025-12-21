@@ -1,6 +1,5 @@
 // DungeonGenerator.h
 #pragma once
-
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "NavigationSystem.h"
@@ -27,10 +26,23 @@ public:
   // Static instance reference (like Unity's singleton)
   static ADungeonGenerator* Main;
 
-  // Public properties (like Unity's [SerializeField])
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
-  TSubclassOf<AActor> RoomClass;
+  // Room type arrays
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation|Room Types")
+  TArray<TSubclassOf<AActor>> DeadendRooms;
 
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation|Room Types")
+  TArray<TSubclassOf<AActor>> StraightRooms;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation|Room Types")
+  TArray<TSubclassOf<AActor>> TurnRooms;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation|Room Types")
+  TArray<TSubclassOf<AActor>> TJunctionRooms;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation|Room Types")
+  TArray<TSubclassOf<AActor>> CrossroadRooms;
+
+  // Public properties (like Unity's [SerializeField])
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   float CellSize = 1000.0f;
 
@@ -89,6 +101,7 @@ private:
   ERoomDirection LockedDoorDirection;
 
   // Helper functions
+  void SpawnAllRooms();
   void SpawnRoom(FIntPoint GridPos);
   void AddAdjacentPositions(FIntPoint Pos);
   void CreateMinimalConnections();
@@ -103,8 +116,16 @@ private:
   void SpawnObjectsInFarRooms();
   void CheckAndSetDoorOrWindow(AActor* CurrentRoom, FIntPoint Pos, FIntPoint Direction,
     ERoomDirection DoorDirection, bool bIsNearPerimeter, int32 MinX, int32 MaxX, int32 MinZ, int32 MaxZ);
-
   FString GetConnectionKey(FIntPoint Pos1, FIntPoint Pos2) const;
   bool HasDoorConnection(FIntPoint Pos1, FIntPoint Pos2) const;
   void RebuildNavigation();
+
+  // Room selection helpers
+  TSubclassOf<AActor> GetRandomClass(const TArray<TSubclassOf<AActor>>& ClassArray);
+  FRotator GetDeadendRotation(ERoomDirection OpenDir);
+  FRotator GetStraightRotation(ERoomDirection FirstDir);
+  FRotator GetTurnRotation(ERoomDirection Dir1, ERoomDirection Dir2);
+  FRotator GetTJunctionRotation(const TArray<ERoomDirection>& OpenDirs);
+  bool IsOpposite(ERoomDirection Dir1, ERoomDirection Dir2);
+  FVector GetRotationOffset(float YawRotation);
 };

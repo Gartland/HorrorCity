@@ -1,6 +1,5 @@
 // DungeonGenerator.cpp
 #include "DungeonGenerator.h"
-//#include "RoomActor.h"
 #include "Kismet/GameplayStatics.h"
 #include "NavigationSystem.h"
 #include "DrawDebugHelpers.h"
@@ -27,7 +26,6 @@ void ADungeonGenerator::NextLevel()
   EnemyCount = CellCount / 10;
   GenerateDungeon();
 
-  // Reset player position (you'll need to implement this based on your player setup)
   APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
   if (PlayerPawn)
   {
@@ -37,10 +35,8 @@ void ADungeonGenerator::NextLevel()
 
 void ADungeonGenerator::GenerateDungeon()
 {
-  // Clear previous dungeon
   ClearDungeon();
 
-  // Reset data structures
   OccupiedCells.Empty();
   AvailablePositions.Empty();
   RoomMap.Empty();
@@ -49,14 +45,22 @@ void ADungeonGenerator::GenerateDungeon()
   LockedArea.Empty();
   AccessibleArea.Empty();
 
-  // Start with the first room at origin
+  // Generate room positions (but don't spawn yet)
   FIntPoint StartPos(0, 0);
-  SpawnRoom(StartPos);
   OccupiedCells.Add(StartPos);
   AddAdjacentPositions(StartPos);
 
-  // Generate remaining rooms
-  for (int32 i = 1; i < CellCount; i++)
+  // Force room 1 to be a dead end by only adding one neighbor initially
+  if (AvailablePositions.Num() > 0)
+  {
+    int32 RandomIndex = FMath::RandRange(0, AvailablePositions.Num() - 1);
+    FIntPoint FirstRoom = AvailablePositions[RandomIndex];
+    OccupiedCells.Add(FirstRoom);
+    AvailablePositions.RemoveAt(RandomIndex);
+    AddAdjacentPositions(FirstRoom);
+  }
+
+  for (int32 i = 2; i < CellCount; i++)
   {
     if (AvailablePositions.Num() == 0)
     {
@@ -64,47 +68,215 @@ void ADungeonGenerator::GenerateDungeon()
       break;
     }
 
-    // Pick a random available position
     int32 RandomIndex = FMath::RandRange(0, AvailablePositions.Num() - 1);
     FIntPoint NewPos = AvailablePositions[RandomIndex];
 
-    // Spawn the room
-    SpawnRoom(NewPos);
     OccupiedCells.Add(NewPos);
     AvailablePositions.RemoveAt(RandomIndex);
-
-    // Add new adjacent positions
     AddAdjacentPositions(NewPos);
   }
 
-  // First create minimal connections to ensure all rooms are reachable
+  // Create all connections first
   CreateMinimalConnections();
-
-  // Create locked area and restrict its connections
+  AddExtraDoors();  // Move this BEFORE CreateLockedArea
   CreateLockedArea();
-
-  // Calculate accessible area
   CalculateAccessibleArea();
 
-  // Set up all doors and windows
+  // NOW spawn rooms based on connectivity
+  SpawnAllRooms();
+
+  // Setup doors and spawn objects
   SetupDoorsAndWindows();
-
-  // Spawn the locked door
   SpawnLockedDoor();
-
-  // Spawn the key
   SpawnKey();
-
-  // Spawn enemies and treasure
   SpawnObjectsInFarRooms();
-
-  // Rebuild navigation mesh
   RebuildNavigation();
+}
+
+void ADungeonGenerator::SpawnAllRooms()
+{
+  // Spawn origin room first to ensure it's Room 0
+  FIntPoint Origin(0, 0);
+  if (OccupiedCells.Contains(Origin))
+  {
+    SpawnRoom(Origin);
+  }
+
+  // Spawn remaining rooms
+  for (const FIntPoint& GridPos : OccupiedCells)
+  {
+    if (GridPos != Origin && !RoomMap.Contains(GridPos))
+    {
+      SpawnRoom(GridPos);
+    }
+  }
+}
+
+void ADungeonGenerator::SpawnRoom(FIntPoint GridPos)
+{
+  // Determine which directions have connections
+  TArray<ERoomDirection> OpenDirections;
+
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, 1)))
+    OpenDirections.Add(ERoomDirection::SOUTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(1, 0)))
+    OpenDirections.Add(ERoomDirection::EAST);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, -1)))
+    OpenDirections.Add(ERoomDirection::NORTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(-1, 0)))
+    OpenDirections.Add(ERoomDirection::WEST);
+
+  // Select appropriate room class and rotation
+  TSubclassOf<AActor> SelectedClass = nullptr;
+  FRotator SpawnRotation = FRotator::ZeroRotator;
+
+  int32 ConnectionCount = OpenDirections.Num();
+
+  if (ConnectionCount == 1)
+  {
+    SelectedClass = GetRandomClass(DeadendRooms);
+    SpawnRotation = GetDeadendRotation(OpenDirections[0]);
+  }
+  else if (ConnectionCount == 2)
+  {
+    if (IsOpposite(OpenDirections[0], OpenDirections[1]))
+    {
+      SelectedClass = GetRandomClass(StraightRooms);
+      SpawnRotation = GetStraightRotation(OpenDirections[0]);
+    }
+    else
+    {
+      SelectedClass = GetRandomClass(TurnRooms);
+      SpawnRotation = GetTurnRotation(OpenDirections[0], OpenDirections[1]);
+    }
+  }
+  else if (ConnectionCount == 3)
+  {
+    SelectedClass = GetRandomClass(TJunctionRooms);
+    SpawnRotation = GetTJunctionRotation(OpenDirections);
+  }
+  else if (ConnectionCount == 4)
+  {
+    SelectedClass = GetRandomClass(CrossroadRooms);
+  }
+
+  if (!SelectedClass)
+  {
+    UE_LOG(LogTemp, Error, TEXT("No room class available for position (%d, %d) with %d connections"),
+      GridPos.X, GridPos.Y, ConnectionCount);
+    return;
+  }
+
+  // Offset to center the room (pivot is at northwest corner)
+  FVector SpawnLocation(GridPos.X * CellSize + CellSize / 2.0f, GridPos.Y * CellSize + CellSize / 2.0f, 0.0f);
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = this;
+
+  AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(SelectedClass, SpawnLocation, SpawnRotation, SpawnParams);
+
+  if (RoomInstance)
+  {
+    ActiveDungeonRooms.Add(RoomInstance);
+    RoomMap.Add(GridPos, RoomInstance);
+  }
+}
+
+TSubclassOf<AActor> ADungeonGenerator::GetRandomClass(const TArray<TSubclassOf<AActor>>& ClassArray)
+{
+  if (ClassArray.Num() == 0) return nullptr;
+  return ClassArray[FMath::RandRange(0, ClassArray.Num() - 1)];
+}
+
+FRotator ADungeonGenerator::GetDeadendRotation(ERoomDirection OpenDir)
+{
+  switch (OpenDir)
+  {
+  case ERoomDirection::NORTH: return FRotator(0, 0, 0);
+  case ERoomDirection::EAST:  return FRotator(0, 90, 0);
+  case ERoomDirection::SOUTH: return FRotator(0, 180, 0);
+  case ERoomDirection::WEST:  return FRotator(0, 270, 0);
+  }
+  return FRotator::ZeroRotator;
+}
+
+FRotator ADungeonGenerator::GetStraightRotation(ERoomDirection FirstDir)
+{
+  if (FirstDir == ERoomDirection::NORTH || FirstDir == ERoomDirection::SOUTH)
+    return FRotator(0, 0, 0);  // North-South
+  else
+    return FRotator(0, 90, 0); // East-West
+}
+
+FRotator ADungeonGenerator::GetTurnRotation(ERoomDirection Dir1, ERoomDirection Dir2)
+{
+  // Assuming turn rooms are designed with openings at North and East by default
+  bool bHasNorth = (Dir1 == ERoomDirection::NORTH || Dir2 == ERoomDirection::NORTH);
+  bool bHasEast = (Dir1 == ERoomDirection::EAST || Dir2 == ERoomDirection::EAST);
+  bool bHasSouth = (Dir1 == ERoomDirection::SOUTH || Dir2 == ERoomDirection::SOUTH);
+  bool bHasWest = (Dir1 == ERoomDirection::WEST || Dir2 == ERoomDirection::WEST);
+
+  if (bHasNorth && bHasEast)  return FRotator(0, 0, 0);
+  if (bHasEast && bHasSouth)  return FRotator(0, 90, 0);
+  if (bHasSouth && bHasWest)  return FRotator(0, 180, 0);
+  if (bHasWest && bHasNorth)  return FRotator(0, 270, 0);
+
+  return FRotator::ZeroRotator;
+}
+
+FRotator ADungeonGenerator::GetTJunctionRotation(const TArray<ERoomDirection>& OpenDirs)
+{
+  // Assuming T-junction rooms are designed with opening at North, East, and West by default (missing South)
+  bool bHasNorth = OpenDirs.Contains(ERoomDirection::NORTH);
+  bool bHasEast = OpenDirs.Contains(ERoomDirection::EAST);
+  bool bHasSouth = OpenDirs.Contains(ERoomDirection::SOUTH);
+  bool bHasWest = OpenDirs.Contains(ERoomDirection::WEST);
+
+  if (!bHasSouth) return FRotator(0, 0, 0);    // Missing South
+  if (!bHasWest)  return FRotator(0, 90, 0);   // Missing West
+  if (!bHasNorth) return FRotator(0, 180, 0);  // Missing North
+  if (!bHasEast)  return FRotator(0, 270, 0);  // Missing East
+
+  return FRotator::ZeroRotator;
+}
+
+bool ADungeonGenerator::IsOpposite(ERoomDirection Dir1, ERoomDirection Dir2)
+{
+  return (Dir1 == ERoomDirection::NORTH && Dir2 == ERoomDirection::SOUTH) ||
+    (Dir1 == ERoomDirection::SOUTH && Dir2 == ERoomDirection::NORTH) ||
+    (Dir1 == ERoomDirection::EAST && Dir2 == ERoomDirection::WEST) ||
+    (Dir1 == ERoomDirection::WEST && Dir2 == ERoomDirection::EAST);
+}
+
+FVector ADungeonGenerator::GetRotationOffset(float YawRotation)
+{
+  // Pivot is at northwest corner, so we need to offset based on rotation
+  // 0° (North): No offset needed
+  // 90° (East): Offset by +X (CellSize)
+  // 180° (South): Offset by +X and +Y (CellSize, CellSize)
+  // 270° (West): Offset by +Y (CellSize)
+
+  if (FMath::IsNearlyEqual(YawRotation, 0.0f, 0.1f))
+  {
+    return FVector(0, 0, 0);  // 0° - No offset
+  }
+  else if (FMath::IsNearlyEqual(YawRotation, 90.0f, 0.1f))
+  {
+    return FVector(CellSize, 0, 0);  // 90° - Offset X
+  }
+  else if (FMath::IsNearlyEqual(YawRotation, 180.0f, 0.1f))
+  {
+    return FVector(CellSize, CellSize, 0);  // 180° - Offset X and Y
+  }
+  else if (FMath::IsNearlyEqual(YawRotation, 270.0f, 0.1f))
+  {
+    return FVector(0, CellSize, 0);  // 270° - Offset Y
+  }
+
+  return FVector::ZeroVector;
 }
 
 void ADungeonGenerator::ClearDungeon()
 {
-  // Destroy all active rooms
   for (AActor* Room : ActiveDungeonRooms)
   {
     if (Room && IsValid(Room))
@@ -114,7 +286,6 @@ void ADungeonGenerator::ClearDungeon()
   }
   ActiveDungeonRooms.Empty();
 
-  // Destroy all spawned objects
   for (AActor* Obj : SpawnedObjects)
   {
     if (Obj && IsValid(Obj))
@@ -124,7 +295,6 @@ void ADungeonGenerator::ClearDungeon()
   }
   SpawnedObjects.Empty();
 
-  // Reset data structures
   OccupiedCells.Empty();
   AvailablePositions.Empty();
   RoomMap.Empty();
@@ -133,33 +303,10 @@ void ADungeonGenerator::ClearDungeon()
   AccessibleArea.Empty();
 }
 
-void ADungeonGenerator::SpawnRoom(FIntPoint GridPos)
-{
-  if (!RoomClass)
-  {
-    UE_LOG(LogTemp, Error, TEXT("RoomClass is not set!"));
-    return;
-  }
-
-  FVector SpawnLocation(GridPos.X * CellSize, GridPos.Y * CellSize, 0.0f);
-  FRotator SpawnRotation(0.0f, 0.0f, 0.0f);
-  FActorSpawnParameters SpawnParams;
-  SpawnParams.Owner = this;
-
-  AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(RoomClass, SpawnLocation, SpawnRotation, SpawnParams);
-
-  if (RoomInstance)
-  {
-    ActiveDungeonRooms.Add(RoomInstance);
-    RoomMap.Add(GridPos, RoomInstance);
-  }
-}
-
 void ADungeonGenerator::CreateLockedArea()
 {
   if (OccupiedCells.Num() < 5) return;
 
-  // Find the farthest room from origin
   FIntPoint FarthestRoom(0, 0);
   int32 MaxDistance = 0;
 
@@ -173,10 +320,8 @@ void ADungeonGenerator::CreateLockedArea()
     }
   }
 
-  // Calculate target locked rooms
   int32 TargetLockedRooms = FMath::Max(2, FMath::CeilToInt(OccupiedCells.Num() * LockedAreaSizePercent));
 
-  // Flood fill from farthest room
   TQueue<FIntPoint> Queue;
   LockedArea.Add(FarthestRoom);
   Queue.Enqueue(FarthestRoom);
@@ -193,7 +338,6 @@ void ADungeonGenerator::CreateLockedArea()
         FIntPoint(Current.X - 1, Current.Y)
     };
 
-    // Shuffle neighbors
     for (int32 i = Neighbors.Num() - 1; i > 0; i--)
     {
       int32 j = FMath::RandRange(0, i);
@@ -325,7 +469,6 @@ void ADungeonGenerator::CalculateAccessibleArea()
       {
         FString ConnectionKey = GetConnectionKey(Current, Neighbor);
 
-        // Skip the locked door
         if (ConnectionKey == GetConnectionKey(LockedDoorPos1, LockedDoorPos2))
           continue;
 
@@ -381,7 +524,6 @@ void ADungeonGenerator::SpawnKey()
     0.0f
   );
 
-  // Find farthest accessible room from door
   FIntPoint KeyRoom(0, 0);
   float MaxDistance = 0.0f;
 
@@ -410,7 +552,6 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
 {
   if (OccupiedCells.Num() == 0) return;
 
-  // Sort rooms by distance from origin
   TArray<FIntPoint> RoomsByDistance = OccupiedCells.Array();
   RoomsByDistance.Sort([](const FIntPoint& A, const FIntPoint& B) {
     return (FMath::Abs(A.X) + FMath::Abs(A.Y)) > (FMath::Abs(B.X) + FMath::Abs(B.Y));
@@ -423,7 +564,6 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
     FarRooms.Add(RoomsByDistance[i]);
   }
 
-  // Spawn enemies
   if (EnemyPrefabClass)
   {
     for (int32 i = 0; i < EnemyCount && i < FarRooms.Num(); i++)
@@ -437,7 +577,6 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
     }
   }
 
-  // Spawn treasure
   if (TreasurePrefabClass)
   {
     TArray<FIntPoint> TreasureRooms = FarRooms;
@@ -461,29 +600,8 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
 
 void ADungeonGenerator::SetupDoorsAndWindows()
 {
-  int32 MinX = INT32_MAX, MaxX = INT32_MIN;
-  int32 MinZ = INT32_MAX, MaxZ = INT32_MIN;
-
-  for (const FIntPoint& Pos : OccupiedCells)
-  {
-    if (Pos.X < MinX) MinX = Pos.X;
-    if (Pos.X > MaxX) MaxX = Pos.X;
-    if (Pos.Y < MinZ) MinZ = Pos.Y;
-    if (Pos.Y > MaxZ) MaxZ = Pos.Y;
-  }
-
-  AddExtraDoors();
-
-  for (const auto& Pair : RoomMap)
-  {
-    FIntPoint Pos = Pair.Key;
-    AActor* CurrentRoom = Pair.Value;
-
-    CheckAndSetDoorOrWindow(CurrentRoom, Pos, FIntPoint(0, 1), ERoomDirection::NORTH, Pos.Y >= MaxZ - 1, MinX, MaxX, MinZ, MaxZ);
-    CheckAndSetDoorOrWindow(CurrentRoom, Pos, FIntPoint(1, 0), ERoomDirection::EAST, Pos.X >= MaxX - 1, MinX, MaxX, MinZ, MaxZ);
-    CheckAndSetDoorOrWindow(CurrentRoom, Pos, FIntPoint(0, -1), ERoomDirection::SOUTH, Pos.Y <= MinZ + 1, MinX, MaxX, MinZ, MaxZ);
-    CheckAndSetDoorOrWindow(CurrentRoom, Pos, FIntPoint(-1, 0), ERoomDirection::WEST, Pos.X <= MinX + 1, MinX, MaxX, MinZ, MaxZ);
-  }
+  // This function is now mostly empty since rooms handle their own doors
+  // Keep it for compatibility or remove if not needed
 }
 
 void ADungeonGenerator::CreateMinimalConnections()
@@ -571,39 +689,16 @@ bool ADungeonGenerator::HasDoorConnection(FIntPoint Pos1, FIntPoint Pos2) const
 void ADungeonGenerator::CheckAndSetDoorOrWindow(AActor* CurrentRoom, FIntPoint Pos, FIntPoint Direction,
   ERoomDirection DoorDirection, bool bIsNearPerimeter, int32 MinX, int32 MaxX, int32 MinZ, int32 MaxZ)
 {
-  if (!CurrentRoom) return;
-
-  FIntPoint AdjacentPos = Pos + Direction;
-
-  // You'll need to implement this based on your Room actor's interface
-  // This would call a function on your room blueprint/actor to set doors/windows
-  // Example (assuming you have a ARoomActor class):
-  // ARoomActor* RoomActor = Cast<ARoomActor>(CurrentRoom);
-  // if (RoomActor)
-  // {
-  //     if (OccupiedCells.Contains(AdjacentPos))
-  //     {
-  //         bool bHasDoor = HasDoorConnection(Pos, AdjacentPos);
-  //         RoomActor->SetDoor(DoorDirection, bHasDoor);
-  //     }
-  //     else
-  //     {
-  //         RoomActor->SetDoor(DoorDirection, false);
-  //         if (bIsNearPerimeter)
-  //         {
-  //             RoomActor->SetWindow(DoorDirection, true);
-  //         }
-  //     }
-  // }
+  // No longer needed - rooms are spawned with correct configuration
 }
 
 void ADungeonGenerator::AddAdjacentPositions(FIntPoint Pos)
 {
   TArray<FIntPoint> Directions = {
-      FIntPoint(0, 1),   // North
-      FIntPoint(0, -1),  // South
-      FIntPoint(-1, 0),  // West
-      FIntPoint(1, 0)    // East
+      FIntPoint(0, 1),
+      FIntPoint(0, -1),
+      FIntPoint(-1, 0),
+      FIntPoint(1, 0)
   };
 
   for (const FIntPoint& Dir : Directions)
