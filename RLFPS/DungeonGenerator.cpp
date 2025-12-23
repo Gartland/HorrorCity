@@ -485,9 +485,10 @@ void ADungeonGenerator::CalculateAccessibleArea()
 void ADungeonGenerator::SpawnLockedDoor()
 {
   if (!LockedDoorPrefabClass || !RoomMap.Contains(LockedDoorPos1)) return;
-
-  FVector LockedRoomWorld(LockedDoorPos1.X * CellSize, LockedDoorPos1.Y * CellSize, 0.0f);
-  FVector UnlockedRoomWorld(LockedDoorPos2.X * CellSize, LockedDoorPos2.Y * CellSize, 0.0f);
+ 
+  float offset = CellSize / 2;
+  FVector LockedRoomWorld(LockedDoorPos1.X * CellSize + offset, LockedDoorPos1.Y * CellSize + offset, 0.0f);
+  FVector UnlockedRoomWorld(LockedDoorPos2.X * CellSize + offset, LockedDoorPos2.Y * CellSize + offset, 0.0f);
   FVector DoorPosition = (LockedRoomWorld + UnlockedRoomWorld) / 2.0f;
 
   FRotator DoorRotation(0.0f, 0.0f, 0.0f);
@@ -529,6 +530,7 @@ void ADungeonGenerator::SpawnKey()
 
   for (const FIntPoint& Pos : AccessibleArea)
   {
+    //find farthest room
     FVector RoomWorldPos(Pos.X * CellSize, Pos.Y * CellSize, 0.0f);
     float Distance = FVector::Dist(RoomWorldPos, DoorWorldPos);
     if (Distance > MaxDistance)
@@ -538,7 +540,8 @@ void ADungeonGenerator::SpawnKey()
     }
   }
 
-  FVector KeyPosition(KeyRoom.X * CellSize, KeyRoom.Y * CellSize, 0.0f);
+  float offset = CellSize / 2;
+  FVector KeyPosition(KeyRoom.X * CellSize + offset, KeyRoom.Y * CellSize + offset, 0.0f);
   AActor* Key = GetWorld()->SpawnActor<AActor>(KeyPrefabClass, KeyPosition, FRotator::ZeroRotator);
   if (Key)
   {
@@ -568,7 +571,8 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
   {
     for (int32 i = 0; i < EnemyCount && i < FarRooms.Num(); i++)
     {
-      FVector WorldPos(FarRooms[i].X * CellSize, FarRooms[i].Y * CellSize, 0.0f);
+      float offset = CellSize / 2;
+      FVector WorldPos(FarRooms[i].X * CellSize + offset, FarRooms[i].Y * CellSize + offset, 0.0f);
       AActor* Enemy = GetWorld()->SpawnActor<AActor>(EnemyPrefabClass, WorldPos, FRotator::ZeroRotator);
       if (Enemy)
       {
@@ -588,7 +592,8 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
 
     for (int32 i = 0; i < TreasureCount && i < TreasureRooms.Num(); i++)
     {
-      FVector WorldPos(TreasureRooms[i].X * CellSize, TreasureRooms[i].Y * CellSize, 0.0f);
+      float offset = CellSize / 2;
+      FVector WorldPos(TreasureRooms[i].X * CellSize + offset, TreasureRooms[i].Y * CellSize + offset, 0.0f);
       AActor* Treasure = GetWorld()->SpawnActor<AActor>(TreasurePrefabClass, WorldPos, FRotator::ZeroRotator);
       if (Treasure)
       {
