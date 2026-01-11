@@ -25,7 +25,7 @@ void ADungeonGenerator::NextLevel()
   APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
   if (PlayerPawn)
   {
-    PlayerPawn->SetActorLocation(FVector(100, 100, 100));
+    PlayerPawn->SetActorLocation(FVector(500, 500, 100));
   }
 }
 
