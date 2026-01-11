@@ -106,12 +106,9 @@ private:
   void RemoveLockedAreaConnections();
   void CreateSingleLockedConnection();
   void CalculateAccessibleArea();
-  void SetupDoorsAndWindows();
   void SpawnLockedDoor();
   void SpawnKey();
   void SpawnObjectsInFarRooms();
-  void CheckAndSetDoorOrWindow(AActor* CurrentRoom, FIntPoint Pos, FIntPoint Direction,
-    ERoomDirection DoorDirection, bool bIsNearPerimeter, int32 MinX, int32 MaxX, int32 MinZ, int32 MaxZ);
   FString GetConnectionKey(FIntPoint Pos1, FIntPoint Pos2) const;
   bool HasDoorConnection(FIntPoint Pos1, FIntPoint Pos2) const;
   void RebuildNavigation();

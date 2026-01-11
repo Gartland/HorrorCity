@@ -82,7 +82,6 @@ void ADungeonGenerator::GenerateDungeon()
   SpawnAllRooms();
 
   // Setup doors and spawn objects
-  SetupDoorsAndWindows();
   SpawnLockedDoor();
   SpawnKey();
   SpawnObjectsInFarRooms();
@@ -599,12 +598,6 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
   }
 }
 
-void ADungeonGenerator::SetupDoorsAndWindows()
-{
-  // This function is now mostly empty since rooms handle their own doors
-  // Keep it for compatibility or remove if not needed
-}
-
 void ADungeonGenerator::CreateMinimalConnections()
 {
   TSet<FIntPoint> Visited;
@@ -685,12 +678,6 @@ bool ADungeonGenerator::HasDoorConnection(FIntPoint Pos1, FIntPoint Pos2) const
 {
   FString ConnectionKey = GetConnectionKey(Pos1, Pos2);
   return ConnectedDoors.Contains(ConnectionKey);
-}
-
-void ADungeonGenerator::CheckAndSetDoorOrWindow(AActor* CurrentRoom, FIntPoint Pos, FIntPoint Direction,
-  ERoomDirection DoorDirection, bool bIsNearPerimeter, int32 MinX, int32 MaxX, int32 MinZ, int32 MaxZ)
-{
-  // No longer needed - rooms are spawned with correct configuration
 }
 
 void ADungeonGenerator::AddAdjacentPositions(FIntPoint Pos)
