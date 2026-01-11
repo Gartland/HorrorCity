@@ -304,7 +304,6 @@ void ADungeonGenerator::CreateLockedArea()
 
   FIntPoint FarthestRoom(0, 0);
   int32 MaxDistance = 0;
-
   for (const FIntPoint& Pos : OccupiedCells)
   {
     int32 Distance = FMath::Abs(Pos.X) + FMath::Abs(Pos.Y);
@@ -317,37 +316,79 @@ void ADungeonGenerator::CreateLockedArea()
 
   int32 TargetLockedRooms = FMath::Max(2, FMath::CeilToInt(OccupiedCells.Num() * LockedAreaSizePercent));
 
-  TQueue<FIntPoint> Queue;
+  TArray<FIntPoint> Queue;
   LockedArea.Add(FarthestRoom);
-  Queue.Enqueue(FarthestRoom);
+  Queue.Add(FarthestRoom);
 
-  while (!Queue.IsEmpty() && LockedArea.Num() < TargetLockedRooms)
+  for (int32 i = 0; i < Queue.Num() && LockedArea.Num() < TargetLockedRooms; i++)
   {
-    FIntPoint Current;
-    Queue.Dequeue(Current);
-
     TArray<FIntPoint> Neighbors = {
-        FIntPoint(Current.X, Current.Y + 1),
-        FIntPoint(Current.X + 1, Current.Y),
-        FIntPoint(Current.X, Current.Y - 1),
-        FIntPoint(Current.X - 1, Current.Y)
+        FIntPoint(Queue[i].X, Queue[i].Y + 1), FIntPoint(Queue[i].X + 1, Queue[i].Y),
+        FIntPoint(Queue[i].X, Queue[i].Y - 1), FIntPoint(Queue[i].X - 1, Queue[i].Y)
     };
 
-    for (int32 i = Neighbors.Num() - 1; i > 0; i--)
-    {
-      int32 j = FMath::RandRange(0, i);
-      Neighbors.Swap(i, j);
-    }
+    // Shuffle neighbors for randomness
+    for (int32 j = Neighbors.Num() - 1; j > 0; j--)
+      Neighbors.Swap(j, FMath::RandRange(0, j));
 
     for (const FIntPoint& Neighbor : Neighbors)
     {
+      if (LockedArea.Num() >= TargetLockedRooms) break;
+
       if (OccupiedCells.Contains(Neighbor) && !LockedArea.Contains(Neighbor))
       {
+        // TEST: temporarily add to locked area
         LockedArea.Add(Neighbor);
-        Queue.Enqueue(Neighbor);
 
-        if (LockedArea.Num() >= TargetLockedRooms)
-          break;
+        // Verify all unlocked rooms can reach origin without crossing locked boundaries
+        TSet<FIntPoint> Reachable;
+        TArray<FIntPoint> BFS;
+        BFS.Add(FIntPoint(0, 0));
+        Reachable.Add(FIntPoint(0, 0));
+
+        for (int32 k = 0; k < BFS.Num(); k++)
+        {
+          TArray<FIntPoint> BFSNeighbors = {
+              FIntPoint(BFS[k].X, BFS[k].Y + 1), FIntPoint(BFS[k].X + 1, BFS[k].Y),
+              FIntPoint(BFS[k].X, BFS[k].Y - 1), FIntPoint(BFS[k].X - 1, BFS[k].Y)
+          };
+
+          for (const FIntPoint& BN : BFSNeighbors)
+          {
+            if (OccupiedCells.Contains(BN) && !Reachable.Contains(BN))
+            {
+              FString Key = GetConnectionKey(BFS[k], BN);
+              // Can only traverse if connection exists AND neither room is locked
+              if (ConnectedDoors.Contains(Key) && !LockedArea.Contains(BFS[k]) && !LockedArea.Contains(BN))
+              {
+                Reachable.Add(BN);
+                BFS.Add(BN);
+              }
+            }
+          }
+        }
+
+        // Check if all unlocked rooms are reachable
+        bool bAllReachable = true;
+        for (const FIntPoint& Room : OccupiedCells)
+        {
+          if (!LockedArea.Contains(Room) && !Reachable.Contains(Room))
+          {
+            bAllReachable = false;
+            break;
+          }
+        }
+
+        if (bAllReachable)
+        {
+          // Keep this room in locked area and add to queue for expansion
+          Queue.Add(Neighbor);
+        }
+        else
+        {
+          // Remove it - it would cause isolation
+          LockedArea.Remove(Neighbor);
+        }
       }
     }
   }
