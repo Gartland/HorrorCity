@@ -19,7 +19,7 @@ void ADungeonGenerator::BeginPlay()
 void ADungeonGenerator::NextLevel()
 {
   CellCount += 3;
-  EnemyCount = CellCount / 10;
+  EnemyCount = CellCount * EnemiesPerRoom;
   GenerateDungeon();
 
   APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
@@ -605,10 +605,10 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
 
   if (EnemyPrefabClass)
   {
-    for (int32 i = 0; i < EnemyCount && i < FarRooms.Num(); i++)
+    for (int32 i = 0; i < EnemyCount && i < RoomsByDistance.Num(); i++)
     {
       float offset = CellSize / 2;
-      FVector WorldPos(FarRooms[i].X * CellSize + offset, FarRooms[i].Y * CellSize + offset, 0.0f);
+      FVector WorldPos(RoomsByDistance[i].X * CellSize + offset, RoomsByDistance[i].Y * CellSize + offset, 0.0f);
       AActor* Enemy = GetWorld()->SpawnActor<AActor>(EnemyPrefabClass, WorldPos, FRotator::ZeroRotator);
       if (Enemy)
       {

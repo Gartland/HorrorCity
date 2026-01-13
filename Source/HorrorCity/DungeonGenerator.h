@@ -46,6 +46,9 @@ public:
   int32 CellCount = 15;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+  float EnemiesPerRoom = 0.3f;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "0.0", ClampMax = "1.0"))
   float ExtraDoorChance = 0.3f;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
