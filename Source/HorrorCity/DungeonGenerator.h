@@ -72,6 +72,15 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "0.2", ClampMax = "0.5"))
   float LockedAreaSizePercent = 0.3f;
 
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
+  TSubclassOf<AActor> SafeRoomClass;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
+  TSubclassOf<AActor> KeyRoomClass;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
+  TSubclassOf<AActor> LadderRoomClass;
+
   // Public functions
   UFUNCTION(BlueprintCallable, Category = "Dungeon Generation")
   void GenerateDungeon();
@@ -98,6 +107,9 @@ private:
   FIntPoint LockedDoorPos1;
   FIntPoint LockedDoorPos2;
   ERoomDirection LockedDoorDirection;
+  TMap<FIntPoint, int32> RoomDepthMap;
+  FIntPoint KeyRoomPos;
+  FIntPoint LadderRoomPos;
 
   // Helper functions
   void SpawnAllRooms();
@@ -110,11 +122,20 @@ private:
   void CreateSingleLockedConnection();
   void CalculateAccessibleArea();
   void SpawnLockedDoor();
-  void SpawnKey();
+  void SpawnSafeRoom(FIntPoint Pos);
   void SpawnObjectsInFarRooms();
   FString GetConnectionKey(FIntPoint Pos1, FIntPoint Pos2) const;
   bool HasDoorConnection(FIntPoint Pos1, FIntPoint Pos2) const;
   void RebuildNavigation();
+  // Advanced gen functions
+  void CalculateRoomDepths();
+  void FindKeyAndLadderRooms();
+  void SpawnKeyRoom(FIntPoint GridPos);
+  void SpawnLadderRoom(FIntPoint GridPos);
+  void SpawnEnemiesWithPacing();
+  void SpawnEnemyInRoom(FIntPoint RoomPos, int32 Count);
+  void SpawnLootWithPacing();
+  bool IsAdjacentToSafeRoom(FIntPoint Pos);
 
   // Room selection helpers
   TSubclassOf<AActor> GetRandomClass(const TArray<TSubclassOf<AActor>>& ClassArray);

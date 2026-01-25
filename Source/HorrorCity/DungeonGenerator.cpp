@@ -19,7 +19,7 @@ void ADungeonGenerator::BeginPlay()
 void ADungeonGenerator::NextLevel()
 {
   CellCount += 3;
-  EnemyCount = CellCount * EnemiesPerRoom;
+  EnemyCount = FMath::CeilToInt(CellCount * 0.5f); // Fewer, tougher enemies
   GenerateDungeon();
 
   APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
@@ -40,8 +40,9 @@ void ADungeonGenerator::GenerateDungeon()
   SpawnedObjects.Empty();
   LockedArea.Empty();
   AccessibleArea.Empty();
+  RoomDepthMap.Empty();
 
-  // Generate room positions (but don't spawn yet)
+  // Generate room positions
   FIntPoint StartPos(0, 0);
   OccupiedCells.Add(StartPos);
   AddAdjacentPositions(StartPos);
@@ -72,38 +73,241 @@ void ADungeonGenerator::GenerateDungeon()
     AddAdjacentPositions(NewPos);
   }
 
+  // Calculate room depths for pacing
+  CalculateRoomDepths();
+
   // Create all connections first
   CreateMinimalConnections();
-  AddExtraDoors();  // Move this BEFORE CreateLockedArea
+  AddExtraDoors();
   CreateLockedArea();
   CalculateAccessibleArea();
+
+  // Find special room positions
+  FindKeyAndLadderRooms();
 
   // NOW spawn rooms based on connectivity
   SpawnAllRooms();
 
   // Setup doors and spawn objects
   SpawnLockedDoor();
-  SpawnKey();
-  SpawnObjectsInFarRooms();
+  SpawnEnemiesWithPacing();
+  SpawnLootWithPacing();
   RebuildNavigation();
+}
+
+void ADungeonGenerator::CalculateRoomDepths()
+{
+  TQueue<FIntPoint> Queue;
+  FIntPoint SafeRoom(0, 0);
+
+  RoomDepthMap.Add(SafeRoom, 0);
+  Queue.Enqueue(SafeRoom);
+
+  while (!Queue.IsEmpty())
+  {
+    FIntPoint Current;
+    Queue.Dequeue(Current);
+    int32 CurrentDepth = RoomDepthMap[Current];
+
+    TArray<FIntPoint> Neighbors = {
+        FIntPoint(Current.X, Current.Y + 1),
+        FIntPoint(Current.X + 1, Current.Y),
+        FIntPoint(Current.X, Current.Y - 1),
+        FIntPoint(Current.X - 1, Current.Y)
+    };
+
+    for (const FIntPoint& Neighbor : Neighbors)
+    {
+      if (OccupiedCells.Contains(Neighbor) && !RoomDepthMap.Contains(Neighbor))
+      {
+        RoomDepthMap.Add(Neighbor, CurrentDepth + 1);
+        Queue.Enqueue(Neighbor);
+      }
+    }
+  }
+}
+
+void ADungeonGenerator::FindKeyAndLadderRooms()
+{
+  // Find dead-end rooms far from safe room for key and ladder
+  TArray<FIntPoint> DeadEndCandidates;
+
+  for (const FIntPoint& Pos : OccupiedCells)
+  {
+    if (Pos == FIntPoint(0, 0)) continue; // Skip safe room
+
+    int32 NeighborCount = 0;
+    TArray<FIntPoint> Neighbors = {
+        FIntPoint(Pos.X, Pos.Y + 1), FIntPoint(Pos.X + 1, Pos.Y),
+        FIntPoint(Pos.X, Pos.Y - 1), FIntPoint(Pos.X - 1, Pos.Y)
+    };
+
+    for (const FIntPoint& N : Neighbors)
+    {
+      if (OccupiedCells.Contains(N)) NeighborCount++;
+    }
+
+    // Must be dead-end and reasonably far from start
+    if (NeighborCount == 1 && RoomDepthMap.Contains(Pos) && RoomDepthMap[Pos] >= 3)
+    {
+      DeadEndCandidates.Add(Pos);
+    }
+  }
+
+  // Sort by depth (farthest first)
+  DeadEndCandidates.Sort([this](const FIntPoint& A, const FIntPoint& B) {
+    return RoomDepthMap[A] > RoomDepthMap[B];
+    });
+
+  // Assign key room (accessible area, farthest dead-end)
+  for (const FIntPoint& Candidate : DeadEndCandidates)
+  {
+    if (AccessibleArea.Contains(Candidate))
+    {
+      KeyRoomPos = Candidate;
+      break;
+    }
+  }
+
+  // Assign ladder room (locked area, farthest dead-end)
+  for (const FIntPoint& Candidate : DeadEndCandidates)
+  {
+    if (LockedArea.Contains(Candidate))
+    {
+      LadderRoomPos = Candidate;
+      break;
+    }
+  }
+
+  // Fallback: if no suitable dead-ends, use any far room
+  if (KeyRoomPos == FIntPoint(0, 0))
+  {
+    for (const FIntPoint& Pos : AccessibleArea)
+    {
+      if (RoomDepthMap.Contains(Pos) && RoomDepthMap[Pos] >= 3)
+      {
+        KeyRoomPos = Pos;
+        break;
+      }
+    }
+  }
+
+  if (LadderRoomPos == FIntPoint(0, 0))
+  {
+    for (const FIntPoint& Pos : LockedArea)
+    {
+      if (RoomDepthMap.Contains(Pos) && RoomDepthMap[Pos] >= 3)
+      {
+        LadderRoomPos = Pos;
+        break;
+      }
+    }
+  }
 }
 
 void ADungeonGenerator::SpawnAllRooms()
 {
-  // Spawn origin room first to ensure it's Room 0
+  // Spawn origin room first as Safe Room
   FIntPoint Origin(0, 0);
   if (OccupiedCells.Contains(Origin))
   {
-    SpawnRoom(Origin);
+    SpawnSafeRoom(Origin);
+  }
+
+  // Spawn key room if designated
+  if (KeyRoomPos != FIntPoint(0, 0) && OccupiedCells.Contains(KeyRoomPos))
+  {
+    SpawnKeyRoom(KeyRoomPos);
+  }
+
+  // Spawn ladder room if designated
+  if (LadderRoomPos != FIntPoint(0, 0) && OccupiedCells.Contains(LadderRoomPos))
+  {
+    SpawnLadderRoom(LadderRoomPos);
   }
 
   // Spawn remaining rooms
   for (const FIntPoint& GridPos : OccupiedCells)
   {
-    if (GridPos != Origin && !RoomMap.Contains(GridPos))
+    if (!RoomMap.Contains(GridPos))
     {
       SpawnRoom(GridPos);
     }
+  }
+}
+
+void ADungeonGenerator::SpawnSafeRoom(FIntPoint GridPos)
+{
+  FVector SpawnLocation(GridPos.X * CellSize + CellSize / 2.0f, GridPos.Y * CellSize + CellSize / 2.0f, 0.0f);
+
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = this;
+
+  AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(SafeRoomClass, SpawnLocation, GetDeadendRotation(ERoomDirection::SOUTH), SpawnParams);
+
+  if (RoomInstance)
+  {
+    ActiveDungeonRooms.Add(RoomInstance);
+    RoomMap.Add(GridPos, RoomInstance);
+  }
+}
+
+void ADungeonGenerator::SpawnKeyRoom(FIntPoint GridPos)
+{
+  FVector SpawnLocation(GridPos.X * CellSize + CellSize / 2.0f, GridPos.Y * CellSize + CellSize / 2.0f, 0.0f);
+
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = this;
+
+  // Determine which directions have connections
+  TArray<ERoomDirection> OpenDirections;
+
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, 1)))
+    OpenDirections.Add(ERoomDirection::SOUTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(1, 0)))
+    OpenDirections.Add(ERoomDirection::EAST);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, -1)))
+    OpenDirections.Add(ERoomDirection::NORTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(-1, 0)))
+    OpenDirections.Add(ERoomDirection::WEST);
+
+
+  FRotator SpawnRotation = GetDeadendRotation(OpenDirections[0]);
+  AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(KeyRoomClass, SpawnLocation, SpawnRotation, SpawnParams);
+
+  if (RoomInstance)
+  {
+    ActiveDungeonRooms.Add(RoomInstance);
+    RoomMap.Add(GridPos, RoomInstance);
+  }
+}
+
+void ADungeonGenerator::SpawnLadderRoom(FIntPoint GridPos)
+{
+  FVector SpawnLocation(GridPos.X * CellSize + CellSize / 2.0f, GridPos.Y * CellSize + CellSize / 2.0f, 0.0f);
+
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = this;
+
+  // Determine which directions have connections
+  TArray<ERoomDirection> OpenDirections;
+
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, 1)))
+    OpenDirections.Add(ERoomDirection::SOUTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(1, 0)))
+    OpenDirections.Add(ERoomDirection::EAST);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, -1)))
+    OpenDirections.Add(ERoomDirection::NORTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(-1, 0)))
+    OpenDirections.Add(ERoomDirection::WEST);
+
+  FRotator SpawnRotation = GetDeadendRotation(OpenDirections[0]);
+  AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(LadderRoomClass, SpawnLocation, SpawnRotation, SpawnParams);
+
+  if (RoomInstance)
+  {
+    ActiveDungeonRooms.Add(RoomInstance);
+    RoomMap.Add(GridPos, RoomInstance);
   }
 }
 
@@ -296,6 +500,9 @@ void ADungeonGenerator::ClearDungeon()
   ConnectedDoors.Empty();
   LockedArea.Empty();
   AccessibleArea.Empty();
+  RoomDepthMap.Empty();
+  KeyRoomPos = FIntPoint(0, 0);
+  LadderRoomPos = FIntPoint(0, 0);
 }
 
 void ADungeonGenerator::CreateLockedArea()
@@ -551,85 +758,148 @@ void ADungeonGenerator::SpawnLockedDoor()
   }
 }
 
-void ADungeonGenerator::SpawnKey()
+void ADungeonGenerator::SpawnEnemiesWithPacing()
 {
-  if (!KeyPrefabClass || AccessibleArea.Num() == 0) return;
+  if (!EnemyPrefabClass) return;
 
-  FVector DoorWorldPos(
-    (LockedDoorPos1.X + LockedDoorPos2.X) * CellSize / 2.0f,
-    (LockedDoorPos1.Y + LockedDoorPos2.Y) * CellSize / 2.0f,
-    0.0f
-  );
+  // Categorize rooms by depth for pacing
+  TArray<FIntPoint> EarlyRooms;  // Depth 0-30%
+  TArray<FIntPoint> MidRooms;    // Depth 30-60%
+  TArray<FIntPoint> LateRooms;   // Depth 60%+
+  TArray<FIntPoint> LockedRooms;
 
-  FIntPoint KeyRoom(0, 0);
-  float MaxDistance = 0.0f;
-
-  for (const FIntPoint& Pos : AccessibleArea)
+  int32 MaxDepth = 0;
+  for (const auto& Pair : RoomDepthMap)
   {
-    //find farthest room
-    FVector RoomWorldPos(Pos.X * CellSize, Pos.Y * CellSize, 0.0f);
-    float Distance = FVector::Dist(RoomWorldPos, DoorWorldPos);
-    if (Distance > MaxDistance)
+    if (Pair.Value > MaxDepth) MaxDepth = Pair.Value;
+  }
+
+  FIntPoint SafeRoom(0, 0);
+
+  for (const FIntPoint& Pos : OccupiedCells)
+  {
+    // Skip safe room, key room, ladder room, and rooms adjacent to safe room
+    if (Pos == SafeRoom || Pos == KeyRoomPos || Pos == LadderRoomPos) continue;
+    if (IsAdjacentToSafeRoom(Pos)) continue;
+
+    int32 Depth = RoomDepthMap.Contains(Pos) ? RoomDepthMap[Pos] : 0;
+    float DepthPercent = MaxDepth > 0 ? (float)Depth / MaxDepth : 0;
+
+    if (LockedArea.Contains(Pos))
     {
-      MaxDistance = Distance;
-      KeyRoom = Pos;
+      LockedRooms.Add(Pos);
+    }
+    else if (DepthPercent < 0.3f)
+    {
+      EarlyRooms.Add(Pos);
+    }
+    else if (DepthPercent < 0.6f)
+    {
+      MidRooms.Add(Pos);
+    }
+    else
+    {
+      LateRooms.Add(Pos);
     }
   }
 
-  float offset = CellSize / 2;
-  FVector KeyPosition(KeyRoom.X * CellSize + offset, KeyRoom.Y * CellSize + offset, 0.0f);
-  AActor* Key = GetWorld()->SpawnActor<AActor>(KeyPrefabClass, KeyPosition, FRotator::ZeroRotator);
-  if (Key)
+  int32 EnemiesSpawned = 0;
+
+  // Early game: 20% chance per room, max 1 enemy
+  for (const FIntPoint& Pos : EarlyRooms)
   {
-    SpawnedObjects.Add(Key);
+    if (FMath::FRand() < 0.2f && EnemiesSpawned < EnemyCount)
+    {
+      SpawnEnemyInRoom(Pos, 1);
+      EnemiesSpawned++;
+    }
   }
 
-  UE_LOG(LogTemp, Log, TEXT("Key spawned at (%d, %d), distance from door: %f"), KeyRoom.X, KeyRoom.Y, MaxDistance);
+  // Mid game: 40% chance, 1-2 enemies
+  for (const FIntPoint& Pos : MidRooms)
+  {
+    if (FMath::FRand() < 0.4f && EnemiesSpawned < EnemyCount)
+    {
+      int32 Count = FMath::RandRange(1, 2);
+      SpawnEnemyInRoom(Pos, FMath::Min(Count, EnemyCount - EnemiesSpawned));
+      EnemiesSpawned += Count;
+    }
+  }
+
+  // Late game: 60% chance, 1-2 enemies
+  for (const FIntPoint& Pos : LateRooms)
+  {
+    if (FMath::FRand() < 0.6f && EnemiesSpawned < EnemyCount)
+    {
+      int32 Count = FMath::RandRange(1, 2);
+      SpawnEnemyInRoom(Pos, FMath::Min(Count, EnemyCount - EnemiesSpawned));
+      EnemiesSpawned += Count;
+    }
+  }
+
+  // Locked area: High density, 2-3 enemies per room
+  for (const FIntPoint& Pos : LockedRooms)
+  {
+    if (EnemiesSpawned < EnemyCount)
+    {
+      int32 Count = FMath::RandRange(2, 3);
+      SpawnEnemyInRoom(Pos, FMath::Min(Count, EnemyCount - EnemiesSpawned));
+      EnemiesSpawned += Count;
+    }
+  }
 }
 
-void ADungeonGenerator::SpawnObjectsInFarRooms()
+void ADungeonGenerator::SpawnEnemyInRoom(FIntPoint RoomPos, int32 Count)
 {
-  if (OccupiedCells.Num() == 0) return;
-
-  TArray<FIntPoint> RoomsByDistance = OccupiedCells.Array();
-  RoomsByDistance.Sort([](const FIntPoint& A, const FIntPoint& B) {
-    return (FMath::Abs(A.X) + FMath::Abs(A.Y)) > (FMath::Abs(B.X) + FMath::Abs(B.Y));
-    });
-
-  int32 FarRoomCount = FMath::Max(1, FMath::CeilToInt(RoomsByDistance.Num() * 0.3f));
-  TArray<FIntPoint> FarRooms;
-  for (int32 i = 0; i < FarRoomCount && i < RoomsByDistance.Num(); i++)
+  for (int32 i = 0; i < Count; i++)
   {
-    FarRooms.Add(RoomsByDistance[i]);
-  }
+    float offsetX = FMath::RandRange(-CellSize * 0.3f, CellSize * 0.3f);
+    float offsetY = FMath::RandRange(-CellSize * 0.3f, CellSize * 0.3f);
+    float offset = CellSize / 2;
+    FVector WorldPos(RoomPos.X * CellSize + offset + offsetX, RoomPos.Y * CellSize + offset + offsetY, 50.0f);
 
-  if (EnemyPrefabClass)
-  {
-    for (int32 i = 0; i < EnemyCount && i < RoomsByDistance.Num(); i++)
+    AActor* Enemy = GetWorld()->SpawnActor<AActor>(EnemyPrefabClass, WorldPos, FRotator::ZeroRotator);
+    if (Enemy)
     {
-      float offset = CellSize / 2;
-      FVector WorldPos(RoomsByDistance[i].X * CellSize + offset, RoomsByDistance[i].Y * CellSize + offset, 0.0f);
-      AActor* Enemy = GetWorld()->SpawnActor<AActor>(EnemyPrefabClass, WorldPos, FRotator::ZeroRotator);
-      if (Enemy)
-      {
-        SpawnedObjects.Add(Enemy);
-      }
+      SpawnedObjects.Add(Enemy);
     }
   }
+}
 
+void ADungeonGenerator::SpawnLootWithPacing()
+{
+  // Treasures scattered in far rooms and dead-ends (like original)
   if (TreasurePrefabClass)
   {
-    TArray<FIntPoint> TreasureRooms = FarRooms;
-    for (int32 i = TreasureRooms.Num() - 1; i > 0; i--)
+    TArray<FIntPoint> RoomsByDistance = OccupiedCells.Array();
+    RoomsByDistance.Sort([](const FIntPoint& A, const FIntPoint& B) {
+      return (FMath::Abs(A.X) + FMath::Abs(A.Y)) > (FMath::Abs(B.X) + FMath::Abs(B.Y));
+      });
+
+    int32 FarRoomCount = FMath::Max(1, FMath::CeilToInt(RoomsByDistance.Num() * 0.3f));
+    TArray<FIntPoint> FarRooms;
+    for (int32 i = 0; i < FarRoomCount && i < RoomsByDistance.Num(); i++)
     {
-      int32 j = FMath::RandRange(0, i);
-      TreasureRooms.Swap(i, j);
+      // Skip special rooms
+      if (RoomsByDistance[i] != FIntPoint(0, 0) &&
+        RoomsByDistance[i] != KeyRoomPos &&
+        RoomsByDistance[i] != LadderRoomPos)
+      {
+        FarRooms.Add(RoomsByDistance[i]);
+      }
     }
 
-    for (int32 i = 0; i < TreasureCount && i < TreasureRooms.Num(); i++)
+    // Shuffle for randomness
+    for (int32 i = FarRooms.Num() - 1; i > 0; i--)
+    {
+      int32 j = FMath::RandRange(0, i);
+      FarRooms.Swap(i, j);
+    }
+
+    for (int32 i = 0; i < TreasureCount && i < FarRooms.Num(); i++)
     {
       float offset = CellSize / 2;
-      FVector WorldPos(TreasureRooms[i].X * CellSize + offset, TreasureRooms[i].Y * CellSize + offset, 0.0f);
+      FVector WorldPos(FarRooms[i].X * CellSize + offset, FarRooms[i].Y * CellSize + offset, 50.0f);
       AActor* Treasure = GetWorld()->SpawnActor<AActor>(TreasurePrefabClass, WorldPos, FRotator::ZeroRotator);
       if (Treasure)
       {
@@ -639,14 +909,30 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
   }
 }
 
+bool ADungeonGenerator::IsAdjacentToSafeRoom(FIntPoint Pos)
+{
+  FIntPoint SafeRoom(0, 0);
+  TArray<FIntPoint> Neighbors = {
+      FIntPoint(SafeRoom.X, SafeRoom.Y + 1),
+      FIntPoint(SafeRoom.X + 1, SafeRoom.Y),
+      FIntPoint(SafeRoom.X, SafeRoom.Y - 1),
+      FIntPoint(SafeRoom.X - 1, SafeRoom.Y)
+  };
+
+  return Neighbors.Contains(Pos);
+}
+
 void ADungeonGenerator::CreateMinimalConnections()
 {
   TSet<FIntPoint> Visited;
   TQueue<FIntPoint> Queue;
 
   FIntPoint Start(0, 0);
+  FIntPoint SafeRoom(0, 0);
   Visited.Add(Start);
   Queue.Enqueue(Start);
+
+  bool bSafeRoomConnected = false;
 
   while (!Queue.IsEmpty())
   {
@@ -667,8 +953,21 @@ void ADungeonGenerator::CreateMinimalConnections()
         Visited.Add(Neighbor);
         Queue.Enqueue(Neighbor);
 
-        FString ConnectionKey = GetConnectionKey(Current, Neighbor);
-        ConnectedDoors.Add(ConnectionKey);
+        // Only create ONE connection from safe room
+        if (Current == SafeRoom)
+        {
+          if (!bSafeRoomConnected)
+          {
+            FString ConnectionKey = GetConnectionKey(Current, Neighbor);
+            ConnectedDoors.Add(ConnectionKey);
+            bSafeRoomConnected = true;
+          }
+        }
+        else
+        {
+          FString ConnectionKey = GetConnectionKey(Current, Neighbor);
+          ConnectedDoors.Add(ConnectionKey);
+        }
       }
     }
   }
@@ -676,6 +975,8 @@ void ADungeonGenerator::CreateMinimalConnections()
 
 void ADungeonGenerator::AddExtraDoors()
 {
+  FIntPoint SafeRoom(0, 0);
+
   for (const FIntPoint& Pos : OccupiedCells)
   {
     TArray<FIntPoint> Neighbors = {
@@ -694,7 +995,13 @@ void ADungeonGenerator::AddExtraDoors()
         bool bIsLockedBoundary = (LockedArea.Contains(Pos) && !LockedArea.Contains(Neighbor)) ||
           (!LockedArea.Contains(Pos) && LockedArea.Contains(Neighbor));
 
-        if (!bIsLockedBoundary && !ConnectedDoors.Contains(ConnectionKey) && FMath::FRand() < ExtraDoorChance)
+        bool bInvolvesSafeRoom = (Pos == SafeRoom || Neighbor == SafeRoom);
+        bool bInvolvesKeyRoom = (Pos == KeyRoomPos || Neighbor == KeyRoomPos);
+        bool bInvolvesLadderRoom = (Pos == LadderRoomPos || Neighbor == LadderRoomPos);
+
+        // Don't add extra doors to special rooms or locked boundaries
+        if (!bIsLockedBoundary && !bInvolvesSafeRoom && !bInvolvesKeyRoom && !bInvolvesLadderRoom &&
+          !ConnectedDoors.Contains(ConnectionKey) && FMath::FRand() < ExtraDoorChance)
         {
           ConnectedDoors.Add(ConnectionKey);
         }
