@@ -380,7 +380,7 @@ void ADungeonGenerator::CreateLockedArea()
   int32 MaxDistance = 0;
   for (const FIntPoint& Pos : OccupiedCells)
   {
-    int32 Distance = FMath::Abs(Pos.X) + FMath::Abs(Pos.Y);
+    int32 Distance = FMath::Abs(Pos.X - SafeRoomGridPos.X) + FMath::Abs(Pos.Y - SafeRoomGridPos.Y);
     if (Distance > MaxDistance)
     {
       MaxDistance = Distance;
@@ -642,7 +642,7 @@ void ADungeonGenerator::SpawnKey()
   {
     //find farthest room
     FVector RoomWorldPos(Pos.X * CellSize, Pos.Y * CellSize, 0.0f);
-    float Distance = FVector::Dist(RoomWorldPos, DoorWorldPos);
+    int32 Distance = FMath::Abs(Pos.X - SafeRoomGridPos.X) + FMath::Abs(Pos.Y - SafeRoomGridPos.Y);
     if (Distance > MaxDistance)
     {
       MaxDistance = Distance;
@@ -666,8 +666,10 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
   if (OccupiedCells.Num() == 0) return;
 
   TArray<FIntPoint> RoomsByDistance = OccupiedCells.Array();
-  RoomsByDistance.Sort([](const FIntPoint& A, const FIntPoint& B) {
-    return (FMath::Abs(A.X) + FMath::Abs(A.Y)) > (FMath::Abs(B.X) + FMath::Abs(B.Y));
+  RoomsByDistance.Sort([this](const FIntPoint& A, const FIntPoint& B) {
+    int32 DistA = FMath::Abs(A.X - SafeRoomGridPos.X) + FMath::Abs(A.Y - SafeRoomGridPos.Y);
+    int32 DistB = FMath::Abs(B.X - SafeRoomGridPos.X) + FMath::Abs(B.Y - SafeRoomGridPos.Y);
+    return DistA > DistB;
     });
 
   int32 FarRoomCount = FMath::Max(1, FMath::CeilToInt(RoomsByDistance.Num() * 0.3f));
