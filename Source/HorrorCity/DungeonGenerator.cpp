@@ -97,6 +97,21 @@ void ADungeonGenerator::GenerateDungeon()
   OccupiedCells.Add(SafeRoomPos);
   AddAdjacentPositions(SafeRoomPos);
 
+  // Add EndRoom at furthest east position
+  FIntPoint EndRoomPos(0, 0);
+  int32 MaxX = 0;
+  for (const FIntPoint& Pos : OccupiedCells)
+  {
+    if (Pos.X > MaxX)
+    {
+      MaxX = Pos.X;
+      EndRoomPos = Pos;
+    }
+  }
+  EndRoomPos.X += 1; // Place one cell east of current easternmost
+  OccupiedCells.Add(EndRoomPos);
+  AddAdjacentPositions(EndRoomPos);
+
   // Create all connections first
   CreateMinimalConnections();
   AddExtraDoors();  // Move this BEFORE CreateLockedArea
@@ -131,6 +146,22 @@ void ADungeonGenerator::SpawnAllRooms()
     SpawnSafeRoom(SafeRoomGridPos);
   }
 
+  // Find and spawn EndRoom
+  int32 MaxX = 0;
+  for (const FIntPoint& Pos : OccupiedCells)
+  {
+    if (Pos.X > MaxX)
+    {
+      MaxX = Pos.X;
+      EndRoomGridPos = Pos;
+    }
+  }
+
+  if (OccupiedCells.Contains(EndRoomGridPos))
+  {
+    SpawnEndRoom(EndRoomGridPos);
+  }
+
   // Spawn origin room
   FIntPoint Origin(0, 0);
   if (OccupiedCells.Contains(Origin))
@@ -141,7 +172,7 @@ void ADungeonGenerator::SpawnAllRooms()
   // Spawn remaining rooms
   for (const FIntPoint& GridPos : OccupiedCells)
   {
-    if (GridPos != Origin && GridPos != SafeRoomGridPos && !RoomMap.Contains(GridPos))
+    if (GridPos != Origin && GridPos != SafeRoomGridPos && GridPos != EndRoomGridPos && !RoomMap.Contains(GridPos))
     {
       SpawnRoom(GridPos);
     }
@@ -173,6 +204,46 @@ void ADungeonGenerator::SpawnSafeRoom(FIntPoint GridPos)
   SpawnParams.Owner = this;
 
   AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(SafeRoom, SpawnLocation, SpawnRotation, SpawnParams);
+
+  if (RoomInstance)
+  {
+    ActiveDungeonRooms.Add(RoomInstance);
+    RoomMap.Add(GridPos, RoomInstance);
+  }
+}
+
+void ADungeonGenerator::SpawnEndRoom(FIntPoint GridPos)
+{
+  // Determine which direction the EndRoom opens (should have exactly 1 connection)
+  TArray<ERoomDirection> OpenDirections;
+
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, 1)))
+    OpenDirections.Add(ERoomDirection::SOUTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(1, 0)))
+    OpenDirections.Add(ERoomDirection::EAST);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(0, -1)))
+    OpenDirections.Add(ERoomDirection::NORTH);
+  if (HasDoorConnection(GridPos, GridPos + FIntPoint(-1, 0)))
+    OpenDirections.Add(ERoomDirection::WEST);
+
+  FRotator SpawnRotation = FRotator::ZeroRotator;
+
+  if (OpenDirections.Num() > 0)
+  {
+    SpawnRotation = GetDeadendRotation(OpenDirections[0]);
+  }
+
+  if (!EndRoomClass)
+  {
+    UE_LOG(LogTemp, Error, TEXT("No EndRoom class assigned"));
+    return;
+  }
+
+  FVector SpawnLocation(GridPos.X * CellSize + CellSize / 2.0f, GridPos.Y * CellSize + CellSize / 2.0f, 0.0f);
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = this;
+
+  AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(EndRoomClass, SpawnLocation, SpawnRotation, SpawnParams);
 
   if (RoomInstance)
   {

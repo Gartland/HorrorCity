@@ -41,6 +41,9 @@ public:
   UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
   TSubclassOf<AActor> SafeRoom;
 
+  UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
+  TSubclassOf<AActor> EndRoomClass;
+
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   float CellSize = 1000.0f;
 
@@ -98,6 +101,7 @@ private:
   TSet<FIntPoint> LockedArea;
   TSet<FIntPoint> AccessibleArea;
   FIntPoint SafeRoomGridPos;
+  FIntPoint EndRoomGridPos;
   FIntPoint LockedDoorPos1;
   FIntPoint LockedDoorPos2;
   ERoomDirection LockedDoorDirection;
@@ -105,6 +109,7 @@ private:
   // Helper functions
   void SpawnAllRooms();
   void SpawnSafeRoom(FIntPoint GridPos);
+  void SpawnEndRoom(FIntPoint GridPos);
   void SpawnRoom(FIntPoint GridPos);
   void AddAdjacentPositions(FIntPoint Pos);
   void CreateMinimalConnections();
