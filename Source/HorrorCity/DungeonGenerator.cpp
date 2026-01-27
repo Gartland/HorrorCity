@@ -29,6 +29,14 @@ void ADungeonGenerator::NextLevel()
   CellCount += 3;
   EnemyCount = CellCount * EnemiesPerRoom;
   GenerateDungeon();
+
+  APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+  if (PlayerPawn)
+  {
+    float offset = CellSize / 2;
+    FVector SafeRoomCenter(SafeRoomGridPos.X * CellSize + offset, SafeRoomGridPos.Y * CellSize + offset, 100.0f);
+    PlayerPawn->SetActorLocation(SafeRoomCenter);
+  }
 }
 
 void ADungeonGenerator::GenerateDungeon()
