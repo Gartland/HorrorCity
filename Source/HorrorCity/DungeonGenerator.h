@@ -38,7 +38,9 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation|Room Types")
   TArray<TSubclassOf<AActor>> CrossroadRooms;
 
-  // Public properties (like Unity's [SerializeField])
+  UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
+  TSubclassOf<AActor> SafeRoom;
+
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   float CellSize = 1000.0f;
 
@@ -95,12 +97,14 @@ private:
   TArray<AActor*> SpawnedObjects;
   TSet<FIntPoint> LockedArea;
   TSet<FIntPoint> AccessibleArea;
+  FIntPoint SafeRoomGridPos;
   FIntPoint LockedDoorPos1;
   FIntPoint LockedDoorPos2;
   ERoomDirection LockedDoorDirection;
 
   // Helper functions
   void SpawnAllRooms();
+  void SpawnSafeRoom(FIntPoint GridPos);
   void SpawnRoom(FIntPoint GridPos);
   void AddAdjacentPositions(FIntPoint Pos);
   void CreateMinimalConnections();
