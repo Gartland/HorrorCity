@@ -29,14 +29,6 @@ void ADungeonGenerator::NextLevel()
   CellCount += 3;
   EnemyCount = CellCount * EnemiesPerRoom;
   GenerateDungeon();
-
-  APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
-  if (PlayerPawn)
-  {
-    float offset = CellSize / 2;
-    FVector SafeRoomCenter(SafeRoomGridPos.X * CellSize + offset, SafeRoomGridPos.Y * CellSize + offset, 100.0f);
-    PlayerPawn->SetActorLocation(SafeRoomCenter);
-  }
 }
 
 void ADungeonGenerator::GenerateDungeon()
@@ -114,8 +106,8 @@ void ADungeonGenerator::GenerateDungeon()
 
   // Create all connections first
   CreateMinimalConnections();
-  AddExtraDoors();  // Move this BEFORE CreateLockedArea
   CreateLockedArea();
+  AddExtraDoors();
   CalculateAccessibleArea();
 
   // NOW spawn rooms based on connectivity
@@ -760,27 +752,6 @@ void ADungeonGenerator::SpawnObjectsInFarRooms()
       if (Enemy)
       {
         SpawnedObjects.Add(Enemy);
-      }
-    }
-  }
-
-  if (TreasurePrefabClass)
-  {
-    TArray<FIntPoint> TreasureRooms = FarRooms;
-    for (int32 i = TreasureRooms.Num() - 1; i > 0; i--)
-    {
-      int32 j = FMath::RandRange(0, i);
-      TreasureRooms.Swap(i, j);
-    }
-
-    for (int32 i = 0; i < TreasureCount && i < TreasureRooms.Num(); i++)
-    {
-      float offset = CellSize / 2;
-      FVector WorldPos(TreasureRooms[i].X * CellSize + offset, TreasureRooms[i].Y * CellSize + offset, 0.0f);
-      AActor* Treasure = GetWorld()->SpawnActor<AActor>(TreasurePrefabClass, WorldPos, FRotator::ZeroRotator);
-      if (Treasure)
-      {
-        SpawnedObjects.Add(Treasure);
       }
     }
   }

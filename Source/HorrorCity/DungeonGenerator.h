@@ -60,9 +60,6 @@ public:
   TSubclassOf<AActor> EnemyPrefabClass;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
-  TSubclassOf<AActor> TreasurePrefabClass;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   TSubclassOf<AActor> KeyPrefabClass;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
@@ -70,9 +67,6 @@ public:
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   int32 EnemyCount = 3;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
-  int32 TreasureCount = 2;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "0.2", ClampMax = "0.5"))
   float LockedAreaSizePercent = 0.3f;
