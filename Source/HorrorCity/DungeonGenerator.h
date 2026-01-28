@@ -38,7 +38,12 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation|Room Types")
   TArray<TSubclassOf<AActor>> CrossroadRooms;
 
-  // Public properties (like Unity's [SerializeField])
+  UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
+  TSubclassOf<AActor> SafeRoom;
+
+  UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
+  TSubclassOf<AActor> EndRoomClass;
+
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   float CellSize = 1000.0f;
 
@@ -55,9 +60,6 @@ public:
   TSubclassOf<AActor> EnemyPrefabClass;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
-  TSubclassOf<AActor> TreasurePrefabClass;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   TSubclassOf<AActor> KeyPrefabClass;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
@@ -65,9 +67,6 @@ public:
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   int32 EnemyCount = 3;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
-  int32 TreasureCount = 2;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "0.2", ClampMax = "0.5"))
   float LockedAreaSizePercent = 0.3f;
@@ -95,12 +94,16 @@ private:
   TArray<AActor*> SpawnedObjects;
   TSet<FIntPoint> LockedArea;
   TSet<FIntPoint> AccessibleArea;
+  FIntPoint SafeRoomGridPos;
+  FIntPoint EndRoomGridPos;
   FIntPoint LockedDoorPos1;
   FIntPoint LockedDoorPos2;
   ERoomDirection LockedDoorDirection;
 
   // Helper functions
   void SpawnAllRooms();
+  void SpawnSafeRoom(FIntPoint GridPos);
+  void SpawnEndRoom(FIntPoint GridPos);
   void SpawnRoom(FIntPoint GridPos);
   void AddAdjacentPositions(FIntPoint Pos);
   void CreateMinimalConnections();
