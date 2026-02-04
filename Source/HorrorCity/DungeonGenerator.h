@@ -44,6 +44,9 @@ public:
   UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
   TSubclassOf<AActor> EndRoomClass;
 
+  UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
+  TSubclassOf<AActor> KeyRoomClass;
+
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   float CellSize = 1000.0f;
 
@@ -58,9 +61,6 @@ public:
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   TSubclassOf<AActor> EnemyPrefabClass;
-
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
-  TSubclassOf<AActor> KeyPrefabClass;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   TSubclassOf<AActor> LockedDoorPrefabClass;
@@ -96,15 +96,15 @@ private:
   TSet<FIntPoint> AccessibleArea;
   FIntPoint SafeRoomGridPos;
   FIntPoint EndRoomGridPos;
+  FIntPoint KeyRoomGridPos;
   FIntPoint LockedDoorPos1;
   FIntPoint LockedDoorPos2;
   ERoomDirection LockedDoorDirection;
 
   // Helper functions
   void SpawnAllRooms();
-  void SpawnSafeRoom(FIntPoint GridPos);
-  void SpawnEndRoom(FIntPoint GridPos);
   void SpawnRoom(FIntPoint GridPos);
+  void SpawnSpecialRoom(TSubclassOf<AActor> RoomClass, FIntPoint GridPos);
   void AddAdjacentPositions(FIntPoint Pos);
   void CreateMinimalConnections();
   void AddExtraDoors();
@@ -113,7 +113,7 @@ private:
   void CreateSingleLockedConnection();
   void CalculateAccessibleArea();
   void SpawnLockedDoor();
-  void SpawnKey();
+  void PlaceKeyRoom();
   void SpawnObjectsInFarRooms();
   FString GetConnectionKey(FIntPoint Pos1, FIntPoint Pos2) const;
   bool HasDoorConnection(FIntPoint Pos1, FIntPoint Pos2) const;
