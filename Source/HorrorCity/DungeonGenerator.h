@@ -47,11 +47,20 @@ public:
   UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
   TSubclassOf<AActor> KeyRoomClass;
 
+  UPROPERTY(EditAnywhere, Category = "Dungeon Generation")
+  TSubclassOf<AActor> BossFloorClass;
+
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
   float CellSize = 1000.0f;
 
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
+  int32 Floor = 1;
+
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "5", ClampMax = "100"))
   int32 CellCount = 15;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation")
+  int32 FloorsPerBoss = 5;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "0.0", ClampMax = "1.0"))
   float EnemiesPerRoom = 0.3f;
@@ -80,6 +89,8 @@ public:
 
   UFUNCTION(BlueprintCallable, Category = "Dungeon Generation")
   void NextLevel();
+
+  void SpawnBossFloor();
 
 protected:
   virtual void BeginPlay() override;

@@ -26,16 +26,54 @@ void ADungeonGenerator::BeginPlay()
 
 void ADungeonGenerator::NextLevel()
 {
+  Floor++;
   CellCount += 3;
   EnemyCount = CellCount * EnemiesPerRoom;
-  GenerateDungeon();
+
+  if (BossFloorClass && FloorsPerBoss > 0 && Floor % FloorsPerBoss == 0)
+  {
+    SpawnBossFloor();
+  }
+  else {
+    GenerateDungeon();
+
+    APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+    if (PlayerPawn)
+    {
+      float offset = CellSize / 2;
+      FVector SafeRoomCenter(SafeRoomGridPos.X * CellSize + offset, SafeRoomGridPos.Y * CellSize + offset, 100.0f);
+      PlayerPawn->SetActorLocation(SafeRoomCenter);
+    }
+  }
+}
+
+void ADungeonGenerator::SpawnBossFloor() 
+{
+  //Clear old floor and spawn prebuilt Boss Floor
+  ClearDungeon();
+
+  OccupiedCells.Empty();
+  AvailablePositions.Empty();
+  RoomMap.Empty();
+  ConnectedDoors.Empty();
+  SpawnedObjects.Empty();
+  LockedArea.Empty();
+  AccessibleArea.Empty();
+
+  FActorSpawnParameters SpawnParams;
+  SpawnParams.Owner = this;
+
+  AActor* RoomInstance = GetWorld()->SpawnActor<AActor>(BossFloorClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+
+  if (RoomInstance)
+  {
+    ActiveDungeonRooms.Add(RoomInstance);
+  }
 
   APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
   if (PlayerPawn)
   {
-    float offset = CellSize / 2;
-    FVector SafeRoomCenter(SafeRoomGridPos.X * CellSize + offset, SafeRoomGridPos.Y * CellSize + offset, 100.0f);
-    PlayerPawn->SetActorLocation(SafeRoomCenter);
+    PlayerPawn->SetActorLocation(FVector::ZeroVector);
   }
 }
 
