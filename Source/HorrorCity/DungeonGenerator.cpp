@@ -132,6 +132,7 @@ void ADungeonGenerator::GenerateDungeon()
     }
   }
   SafeRoomPos.X -= 1; // Place one cell west of current westernmost
+	SafeRoomGridPos = SafeRoomPos;
   OccupiedCells.Add(SafeRoomPos);
   AddAdjacentPositions(SafeRoomPos);
 
@@ -147,6 +148,7 @@ void ADungeonGenerator::GenerateDungeon()
     }
   }
   EndRoomPos.X += 1; // Place one cell east of current easternmost
+	EndRoomGridPos = EndRoomPos;
   OccupiedCells.Add(EndRoomPos);
   AddAdjacentPositions(EndRoomPos);
 
@@ -167,31 +169,10 @@ void ADungeonGenerator::GenerateDungeon()
 
 void ADungeonGenerator::SpawnAllRooms()
 {
-  // Find and spawn SafeRoom first
-  int32 MinX = 0;
-  for (const FIntPoint& Pos : OccupiedCells)
-  {
-    if (Pos.X < MinX)
-    {
-      MinX = Pos.X;
-      SafeRoomGridPos = Pos;
-    }
-  }
 
   if (OccupiedCells.Contains(SafeRoomGridPos))
   {
     SpawnSpecialRoom(SafeRoom, SafeRoomGridPos);
-  }
-
-  // Find and spawn EndRoom
-  int32 MaxX = 0;
-  for (const FIntPoint& Pos : OccupiedCells)
-  {
-    if (Pos.X > MaxX)
-    {
-      MaxX = Pos.X;
-      EndRoomGridPos = Pos;
-    }
   }
 
   if (OccupiedCells.Contains(EndRoomGridPos))
@@ -659,7 +640,9 @@ void ADungeonGenerator::PlaceKeyRoom()
     {
       FIntPoint Candidate = Room + Dir;
 
-      if (!OccupiedCells.Contains(Candidate))
+      if (!OccupiedCells.Contains(Candidate) &&
+        FMath::Abs(Candidate.X - SafeRoomGridPos.X) + FMath::Abs(Candidate.Y - SafeRoomGridPos.Y) > 1 &&
+        FMath::Abs(Candidate.X - EndRoomGridPos.X) + FMath::Abs(Candidate.Y - EndRoomGridPos.Y) > 1)
       {
         KeyRoomGridPos = Candidate;
         OccupiedCells.Add(KeyRoomGridPos);
@@ -675,7 +658,7 @@ void ADungeonGenerator::CalculateAccessibleArea()
   AccessibleArea.Empty();
   TQueue<FIntPoint> Queue;
 
-  FIntPoint Start(0, 0);
+  FIntPoint Start = SafeRoomGridPos;
   AccessibleArea.Add(Start);
   Queue.Enqueue(Start);
 
