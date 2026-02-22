@@ -81,6 +81,11 @@ void ADungeonGenerator::GenerateDungeon()
 {
   ClearDungeon();
 
+  if (Seed != 0)
+    RandStream.Initialize(Seed + Floor);  // add Floor so each level differs
+  else
+    RandStream.GenerateNewSeed();
+
   OccupiedCells.Empty();
   AvailablePositions.Empty();
   RoomMap.Empty();
@@ -97,7 +102,7 @@ void ADungeonGenerator::GenerateDungeon()
   // Force room 1 to be a dead end by only adding one neighbor initially
   if (AvailablePositions.Num() > 0)
   {
-    int32 RandomIndex = FMath::RandRange(0, AvailablePositions.Num() - 1);
+    int32 RandomIndex = RandStream.RandRange(0, AvailablePositions.Num() - 1);
     FIntPoint FirstRoom = AvailablePositions[RandomIndex];
     OccupiedCells.Add(FirstRoom);
     AvailablePositions.RemoveAt(RandomIndex);
@@ -112,7 +117,7 @@ void ADungeonGenerator::GenerateDungeon()
       break;
     }
 
-    int32 RandomIndex = FMath::RandRange(0, AvailablePositions.Num() - 1);
+    int32 RandomIndex = RandStream.RandRange(0, AvailablePositions.Num() - 1);
     FIntPoint NewPos = AvailablePositions[RandomIndex];
 
     OccupiedCells.Add(NewPos);
@@ -313,7 +318,7 @@ void ADungeonGenerator::SpawnRoom(FIntPoint GridPos)
 TSubclassOf<AActor> ADungeonGenerator::GetRandomClass(const TArray<TSubclassOf<AActor>>& ClassArray)
 {
   if (ClassArray.Num() == 0) return nullptr;
-  return ClassArray[FMath::RandRange(0, ClassArray.Num() - 1)];
+  return ClassArray[RandStream.RandRange(0, ClassArray.Num() - 1)];
 }
 
 FRotator ADungeonGenerator::GetDeadendRotation(ERoomDirection OpenDir)
@@ -463,7 +468,7 @@ void ADungeonGenerator::CreateLockedArea()
 
     // Shuffle neighbors for randomness
     for (int32 j = Neighbors.Num() - 1; j > 0; j--)
-      Neighbors.Swap(j, FMath::RandRange(0, j));
+      Neighbors.Swap(j, RandStream.RandRange(0, j));
 
     for (const FIntPoint& Neighbor : Neighbors)
     {
@@ -603,7 +608,7 @@ void ADungeonGenerator::CreateSingleLockedConnection()
 
   if (PossibleConnections.Num() > 0)
   {
-    FConnection ChosenConnection = PossibleConnections[FMath::RandRange(0, PossibleConnections.Num() - 1)];
+    FConnection ChosenConnection = PossibleConnections[RandStream.RandRange(0, PossibleConnections.Num() - 1)];
     LockedDoorPos1 = ChosenConnection.Locked;
     LockedDoorPos2 = ChosenConnection.Unlocked;
     LockedDoorDirection = ChosenConnection.Dir;
@@ -624,7 +629,7 @@ void ADungeonGenerator::PlaceKeyRoom()
   TArray<FIntPoint> ShuffledRooms = AccessibleArea.Array();
   for (int32 i = ShuffledRooms.Num() - 1; i > 0; i--)
   {
-    ShuffledRooms.Swap(i, FMath::RandRange(0, i));
+    ShuffledRooms.Swap(i, RandStream.RandRange(0, i));
   }
 
   TArray<FIntPoint> Directions = {
@@ -814,7 +819,7 @@ void ADungeonGenerator::AddExtraDoors()
         bool bIsLockedBoundary = (LockedArea.Contains(Pos) && !LockedArea.Contains(Neighbor)) ||
           (!LockedArea.Contains(Pos) && LockedArea.Contains(Neighbor));
 
-        if (!bIsLockedBoundary && !ConnectedDoors.Contains(ConnectionKey) && FMath::FRand() < ExtraDoorChance)
+        if (!bIsLockedBoundary && !ConnectedDoors.Contains(ConnectionKey) && RandStream.FRand() < ExtraDoorChance)
         {
           ConnectedDoors.Add(ConnectionKey);
         }

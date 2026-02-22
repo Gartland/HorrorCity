@@ -80,6 +80,9 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon Generation", meta = (ClampMin = "0.2", ClampMax = "0.5"))
   float LockedAreaSizePercent = 0.3f;
 
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dungeon")
+  int32 Seed = 0;
+  
   // Public functions
   UFUNCTION(BlueprintCallable, Category = "Dungeon Generation")
   void GenerateDungeon();
@@ -111,6 +114,7 @@ private:
   FIntPoint LockedDoorPos1;
   FIntPoint LockedDoorPos2;
   ERoomDirection LockedDoorDirection;
+  FRandomStream RandStream;
 
   // Helper functions
   void SpawnAllRooms();
