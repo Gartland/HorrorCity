@@ -24,26 +24,21 @@ class HORRORCITY_API ALootManager : public AActor
 {
 	GENERATED_BODY()
 	
-public:	
-	// Sets default values for this actor's properties
-	ALootManager();
+	public:	
+		// Sets default values for this actor's properties
+		ALootManager();
 
-	UPROPERTY(EditAnywhere)
-	TSubclassOf<AActor> ItemBaseClass;
+		UPROPERTY(EditAnywhere)
+		TSubclassOf<AActor> ItemBaseClass;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TArray<FLootPool> LootPools;
+		UPROPERTY(EditAnywhere, BlueprintReadWrite)
+		TArray<FLootPool> LootPools;
 
-	UFUNCTION(BlueprintCallable, Category = "Dungeon Generation")
-	void SpawnLoot();
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
+		UFUNCTION(BlueprintCallable, Category = "Dungeon Generation")
+		void SpawnLoot();
 
-public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
-	TSubclassOf<AActor> GetRandomItem();
+	private:
+		FRandomStream RandStream;
+		TSubclassOf<AActor> GetRandomItem();
 
 };

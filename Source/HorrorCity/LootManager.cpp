@@ -4,6 +4,7 @@
 #include "LootManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "DungeonGenerator.h"
 
 // Sets default values
 ALootManager::ALootManager()
@@ -15,6 +16,10 @@ ALootManager::ALootManager()
 
 void ALootManager::SpawnLoot()
 {
+	//Get seed from Dungeon Gen
+	ADungeonGenerator* DungeonGen = Cast<ADungeonGenerator>(UGameplayStatics::GetActorOfClass(GetWorld(), ADungeonGenerator::StaticClass()));
+	RandStream.Initialize(DungeonGen->Seed + DungeonGen->Floor);
+
 	TArray<AActor*> PlacedItems;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ItemBaseClass, PlacedItems);
 	
@@ -35,19 +40,6 @@ void ALootManager::SpawnLoot()
 	}
 }
 
-// Called when the game starts or when spawned
-void ALootManager::BeginPlay()
-{
-	Super::BeginPlay();
-	
-}
-
-// Called every frame
-void ALootManager::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-}
 
 TSubclassOf<AActor> ALootManager::GetRandomItem()
 {
@@ -65,10 +57,9 @@ TSubclassOf<AActor> ALootManager::GetRandomItem()
 		}
 	}
 
-	//TODO: seed as parameter
 	if (itemPool.Num() > 0)
 	{
-		item = itemPool[FMath::RandRange(0, itemPool.Num() - 1)];
+		item = itemPool[RandStream.RandRange(0, itemPool.Num() - 1)];
 	}
 	return item;
 }
